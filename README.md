@@ -54,5 +54,5 @@ A powerful and secure open-source client application designed to interact with t
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/yourusername/secure-ephemeral-site-client.git
-   cd secure-ephemeral-site-client
+   git clone https://github.com/shiptorino/SpyNet.git
+   cd SpyNet
