@@ -29,7 +29,7 @@ A powerful and secure open-source client application designed to interact with t
 
 ## Architecture
 
-![Architecture Diagram](https://via.placeholder.com/800x400?text=Client+Architecture+Diagram)
+![Architecture Diagram](https://placeholder.com/800x400?text=Client+Architecture+Diagram)
 
 1. **Client Application (C#):**
    - Connects to the remote server via WebSockets.
