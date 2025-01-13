@@ -1,7 +1,10 @@
 # SpyNet
-# Secure Ephemeral Site Client
+
+## Secure Ephemeral Site Client
 
 A powerful and secure open-source client application designed to interact with the Secure Ephemeral Site Manager. This client connects to a remote server to manage temporary websites with privilege-based access control, ensuring that only authorized users can access and utilize ephemeral sites.
+
+![SpyNet Logo](https://placeholder.com/200x200?text=SpyNet+Logo)
 
 ## Table of Contents
 
@@ -56,3 +59,8 @@ A powerful and secure open-source client application designed to interact with t
    ```bash
    git clone https://github.com/shiptorino/SpyNet.git
    cd SpyNet
+
+
+  ## Contact
+
+ SUPPORT: https://t.me/RomanShpilka
