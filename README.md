@@ -14,11 +14,6 @@ A powerful and secure open-source client application designed to interact with t
   - [Client](#client)
 - [Installation](#installation)
   - [Building the Client](#building-the-client)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Security](#security)
-- [Contributing](#contributing)
-- [License](#license)
 - [Contact](#contact)
 
 ## Features
