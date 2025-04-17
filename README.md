@@ -58,4 +58,4 @@ A powerful and secure open-source client application designed to interact with t
 
   ## Contact
 
- SUPPORT: https://t.me/RomanShpilka
+ SUPPORT: https://t.me/ne_kenti
