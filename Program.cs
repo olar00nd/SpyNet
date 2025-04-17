@@ -14,7 +14,7 @@ namespace DataMaker
 {
     class Program
     {
-        private static readonly string serverUrl = "ws://93.170.131.143:8080";
+        private static readonly string serverUrl = "ws://0000:8080";
         private static ClientWebSocket ws;
         private static bool connected;
         private static readonly string ramdirPath = @"C:\ramdir";
