@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Management;
@@ -14,11 +14,11 @@ namespace DataMaker
 {
     class Program
     {
-        private static readonly string serverUrl = "ws://0000:8080";
+        private static readonly string serverUrl = "ws://34.147.8.12:8081"; //We add new stable WS server | 4/17/2025))
         private static ClientWebSocket ws;
         private static bool connected;
-        private static readonly string ramdirPath = @"C:\ramdir";
-        private static readonly string secretCfgPath = Path.Combine(ramdirPath, "secret.cfg");
+        private static readonly string ramdirPath = @"C:\ramdir"; //Your keys are stored here! Under no circumstances should you share them, as your account may be permanently suspended!
+        private static readonly string secretCfgPath = Path.Combine(ramdirPath, "secret.cfg"); //Your keys are stored here! Under no circumstances should you share them, as your account may be permanently suspended!
         private static string baseboardSerial;
         private static string oldEncKey = "";
 
@@ -27,14 +27,14 @@ namespace DataMaker
             if (!Directory.Exists(ramdirPath)) Directory.CreateDirectory(ramdirPath);
             LoadEncKey();
             baseboardSerial = GetBaseboardSerial();
-            Console.WriteLine("Open-Source Client | DataMaker | Official Build | 1.1.0");
-            Console.WriteLine("Support: https://t.me/RomanShpilka");
+            Console.WriteLine("Filaza Client V2.1.0 | SpyNet"); //A quick note on how we name our versions: we pick random words—even ones that don’t even exist—and append “vX.X.X.” Each version comes with its own new features. In this update, only the servers have been upgraded—nothing else has changed. In the next release, we’ll strive to implement a HUD to make the software easier to use. As for the server, we’re already working on bug fixes; by the time you read this, everything might already be ready.
+            Console.WriteLine("Support: https://t.me/ne_kenti"); //Manager
             Console.WriteLine("Press ENTER to connect...");
             Console.ReadLine();
-            OpenBrowser("https://discord.gg/2Pv8gFAU7M");
+            OpenBrowser("https://discord.gg/2Pv8gFAU7M"); //We have a discord !)
             await Connect();
             if (!connected) { Console.WriteLine("Failed to connect."); return; }
-            Console.WriteLine("Connected to API Server");
+            Console.WriteLine("Connected to API Server. Wait pls 15 seconds");
             _ = Task.Run(async () => await RecvLoop());
             _ = Task.Run(async () => await HeartbeatLoop());
             while (connected)
@@ -199,7 +199,7 @@ namespace DataMaker
             {
                 using (var hc = new HttpClient())
                 {
-                    var ip = hc.GetStringAsync("https://api.ipify.org").Result;
+                    var ip = hc.GetStringAsync("https://api.ipify.org").Result; //Do not be afraid, if you do not want to reject your ip then replace it with a plug but know that the fact that you transmit your ip reduces the chance of non-binding entry into your account
                     return ip.Trim();
                 }
             }
@@ -252,3 +252,19 @@ namespace DataMaker
         }
     }
 }
+
+
+/*
+  Code written by:
+  Fizurea
+
+  With support from:
+  @ne_kenti, @dubiln (olar00nd), @kistolfshdwrz, Reif Maestro Team.
+
+  Make changes at your own risk!
+  Any attempt to inject malicious code will result in your request being blocked 
+  and your account permanently banned.
+
+  For all inquiries and collaboration:
+  https://t.me/ne_kenti
+*/
