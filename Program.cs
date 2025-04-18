@@ -1,14 +1,16 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Management;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Net.WebSockets;
-using System.Security.Policy;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using DiscordRPC;
 using Newtonsoft.Json;
+using Spectre.Console;
 
 namespace DataMaker
 {
@@ -20,46 +22,108 @@ namespace DataMaker
         private static readonly string ramdirPath = @"C:\ramdir"; //Your keys are stored here! Under no circumstances should you share them, as your account may be permanently suspended!
         private static readonly string secretCfgPath = Path.Combine(ramdirPath, "secret.cfg"); //Your keys are stored here! Under no circumstances should you share them, as your account may be permanently suspended!
         private static string baseboardSerial;
-        private static string oldEncKey = "";
+        private static string oldEncKey = string.Empty;
+        private static DiscordRpcClient discordClient;
+        private static HUDState hud = new HUDState();
 
         static async Task Main(string[] args)
         {
-            if (!Directory.Exists(ramdirPath)) Directory.CreateDirectory(ramdirPath);
+            Directory.CreateDirectory(ramdirPath);
+
+            InitializeDiscordRPC();
             LoadEncKey();
             baseboardSerial = GetBaseboardSerial();
-            Console.WriteLine("Filaza Client V2.1.0 | SpyNet"); //A quick note on how we name our versions: we pick random words—even ones that don’t even exist—and append “vX.X.X.” Each version comes with its own new features. In this update, only the servers have been upgraded—nothing else has changed. In the next release, we’ll strive to implement a HUD to make the software easier to use. As for the server, we’re already working on bug fixes; by the time you read this, everything might already be ready.
-            Console.WriteLine("Support: https://t.me/ne_kenti"); //Manager
-            Console.WriteLine("Press ENTER to connect...");
-            Console.ReadLine();
-            OpenBrowser("https://discord.gg/2Pv8gFAU7M"); //We have a discord !)
+
+            var hudTask = Task.Run(() => HUDLoop());
+
+            AnsiConsole.Write(new FigletText("Filaza Client V2.2.0").Color(Color.Red)); //A quick note on how we name our versions: we pick random words—even ones that don’t even exist—and append “vX.X.X.” Each version comes with its own new features. In this update, only the servers have been upgraded—nothing else has changed. In the next release, we’ll strive to implement a HUD to make the software easier to use. As for the server, we’re already working on bug fixes; by the time you read this, everything might already be ready.
+            AnsiConsole.Write(new Markup("[bold yellow]Support:[/] [link=https://t.me/ne_kenti]Telegram[/]\n")); //Manager
+
+            await CountdownTimer(15);
+
+            OpenBrowser("https://discord.gg/2Pv8gFAU7M"); //We have a discord))
             await Connect();
-            if (!connected) { Console.WriteLine("Failed to connect."); return; }
-            Console.WriteLine("Connected to API Server. Wait pls 15 seconds");
-            _ = Task.Run(async () => await RecvLoop());
-            _ = Task.Run(async () => await HeartbeatLoop());
+
+            if (!connected)
+            {
+                AnsiConsole.Markup("[red]Connection failed![/]");
+                return;
+            }
+
+            _ = Task.Run(() => RecvLoop());
+            _ = Task.Run(() => HeartbeatLoop());
+
             while (connected)
             {
-                Console.WriteLine("Type SITE or EXIT:");
-                var inp = Console.ReadLine()?.Trim().ToUpper();
+                var inp = AnsiConsole.Ask<string>("[bold]Type SITE or EXIT:[/]").Trim().ToUpper();
+
                 if (inp == "SITE") await RequestSite();
-                else if (inp == "EXIT")
-                {
-                    await StopSession();
-                    connected = false;
-                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "User exit", CancellationToken.None);
-                }
+                else if (inp == "EXIT") await Shutdown();
             }
+
+            await hudTask;
+        }
+
+        private static async Task CountdownTimer(int seconds)
+        {
+            for (int i = seconds; i > 0; i--)
+            {
+                hud.LastMessage = $"Starting in {i} seconds...";
+                await Task.Delay(1000);
+            }
+        }
+
+        private static void InitializeDiscordRPC()
+        {
+            discordClient = new DiscordRpcClient("112233445566778899");
+            discordClient.Initialize();
+            discordClient.SetPresence(new RichPresence
+            {
+                Details = "SpyNet",
+                State = "In main menu",
+                Timestamps = Timestamps.FromTimeSpan(2000),
+                Assets = new Assets
+                {
+                    LargeImageKey = "logo",
+                    LargeImageText = "Filaza Client"
+                }
+            });
+        }
+
+        private static Table RenderTable()
+        {
+            var table = new Table().NoBorder().Centered();
+            table.AddColumn("[yellow]Metric[/]");
+            table.AddColumn("[yellow]Value[/]");
+
+            table.AddRow("Connection", hud.Connected ? "[green]Open[/]" : "[red]Closed[/]");
+            table.AddRow("Ping", $"{hud.PingMs} ms");
+            table.AddRow("Server", serverUrl);
+            table.AddRow("Baseboard SN", baseboardSerial);
+            table.AddRow("Last IP", hud.LastIP ?? "—");
+            table.AddRow("PC Specs", hud.PCSpecs ?? "—");
+            table.AddRow("Last Msg", hud.LastMessage ?? "—");
+            if (!string.IsNullOrEmpty(hud.SiteUrl))
+                table.AddRow("Site URL", $"[link={hud.SiteUrl}]{hud.SiteUrl}[/]");
+
+            return table;
         }
 
         static async Task Connect()
         {
-            ws = new ClientWebSocket();
             try
             {
+                ws = new ClientWebSocket();
                 await ws.ConnectAsync(new Uri(serverUrl), CancellationToken.None);
-                connected = (ws.State == WebSocketState.Open);
+                connected = ws.State == WebSocketState.Open;
+                hud.Connected = connected;
+                hud.PingMs = GetPing("34.147.8.12");
             }
-            catch (Exception ex) { Console.WriteLine("Conn err => " + ex.Message); connected = false; }
+            catch (Exception ex)
+            {
+                hud.LastMessage = $"[red]Connection error: {ex.Message}[/]";
+                connected = false;
+            }
         }
 
         static async Task RecvLoop()
@@ -69,91 +133,34 @@ namespace DataMaker
             {
                 try
                 {
-                    var r = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                    if (r.MessageType == WebSocketMessageType.Close) { Console.WriteLine("Server closed."); connected = false; break; }
-                    var txt = Encoding.UTF8.GetString(buffer, 0, r.Count);
-                    await HandleMsg(txt);
+                    var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await Shutdown();
+                        break;
+                    }
+
+                    var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    hud.LastMessage = message;
+                    await HandleMsg(message);
                 }
-                catch (Exception ex) { Console.WriteLine("Recv err => " + ex.Message); connected = false; break; }
-            }
-        }
-
-        static async Task HandleMsg(string raw)
-        {
-            dynamic d = JsonConvert.DeserializeObject(raw);
-            if (d == null) return;
-            string action = d.action;
-            if (action == "REQUEST_PC_DATA") await SendPCData();
-            else if (action == "CONNECTION_STATUS") ConnStatus(d);
-            else if (action == "SITE_STATUS") SiteStatus(d);
-        }
-
-        static async Task SendPCData()
-        {
-            var ip = GetIP();
-            var sp = GetPCSpecs();
-            var obj = new { action = "SEND_PC_DATA", baseboard_serial = baseboardSerial, real_ip = ip, pc_specs = sp, old_enc_key = oldEncKey };
-            var js = JsonConvert.SerializeObject(obj);
-            await Send(js);
-        }
-
-        static void ConnStatus(dynamic d)
-        {
-            string s = d.status;
-            string m = d.message;
-            Console.WriteLine("[CLIENT] " + m);
-            if (s == "SUCCESS")
-            {
-                if (d.new_enc_key != null)
+                catch
                 {
-                    string ne = d.new_enc_key;
-                    oldEncKey = ne;
-                    SaveEncKey();
+                    await Shutdown();
+                    break;
                 }
             }
-            else
-            {
-                Console.WriteLine("Conn fail => closing");
-                connected = false;
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Fail", CancellationToken.None).Wait();
-            }
         }
 
-        static void SiteStatus(dynamic d)
+        static async Task Shutdown()
         {
-            string s = d.status;
-            string m = d.message;
-            Console.WriteLine("[CLIENT] => " + m);
-            if (s == "SUCCESS")
-            {
-                string url = d.url;
-                Console.WriteLine("[CLIENT] Opening => " + url);
-                OpenBrowser(url);
-            }
-        }
+            connected = false;
+            hud.Connected = false;
+            if (ws != null && ws.State == WebSocketState.Open)
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Shutdown", CancellationToken.None);
 
-        static async Task RequestSite()
-        {
-            var pl = new { action = "REQUEST_SITE" };
-            var js = JsonConvert.SerializeObject(pl);
-            await Send(js);
-        }
-
-        static async Task StopSession()
-        {
-            var pl = new { action = "STOP_SESSION" };
-            var js = JsonConvert.SerializeObject(pl);
-            await Send(js);
-        }
-
-        static async Task Send(string msg)
-        {
-            try
-            {
-                var b = Encoding.UTF8.GetBytes(msg);
-                await ws.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None);
-            }
-            catch (Exception ex) { Console.WriteLine("Send err => " + ex.Message); connected = false; }
+            discordClient?.Dispose();
+            hud.SiteUrl = null;
         }
 
         static async Task HeartbeatLoop()
@@ -161,49 +168,98 @@ namespace DataMaker
             while (connected)
             {
                 await Task.Delay(10000);
-                var obj = new { action = "HEARTBEAT", baseboard_serial = baseboardSerial };
-                var js = JsonConvert.SerializeObject(obj);
-                await Send(js);
+                hud.PingMs = GetPing("34.147.8.12");
+                await SendAsync(JsonConvert.SerializeObject(new
+                {
+                    action = "HEARTBEAT",
+                    baseboard_serial = baseboardSerial
+                }));
             }
         }
 
-        static void OpenBrowser(string url)
+        static async Task HandleMsg(string raw)
         {
             try
             {
-                Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                dynamic data = JsonConvert.DeserializeObject(raw);
+                if (data.action == "REQUEST_PC_DATA") await SendPCData();
+                else if (data.action == "CONNECTION_STATUS") HandleConnStatus(data);
+                else if (data.action == "SITE_STATUS") HandleSiteStatus(data);
             }
-            catch (Exception ex) { Console.WriteLine("Browser => " + ex.Message); }
+            catch
+            {
+                hud.LastMessage = "[red]Invalid message format[/]";
+            }
         }
 
-        static void LoadEncKey()
+        static async Task SendPCData()
         {
-            try
+            hud.LastIP = GetIP();
+            hud.PCSpecs = GetPCSpecs();
+            await SendAsync(JsonConvert.SerializeObject(new
             {
-                if (File.Exists(secretCfgPath)) oldEncKey = File.ReadAllText(secretCfgPath).Trim();
-            }
-            catch { }
+                action = "SEND_PC_DATA",
+                baseboard_serial = baseboardSerial,
+                real_ip = hud.LastIP,
+                pc_specs = hud.PCSpecs,
+                old_enc_key = oldEncKey
+            }));
         }
-        static void SaveEncKey()
+
+        static async Task HUDLoop()
         {
-            try
+            while (connected)
             {
-                File.WriteAllText(secretCfgPath, oldEncKey);
+                Console.Clear();
+                AnsiConsole.Write(new Panel(RenderTable()).Border(BoxBorder.Rounded).Header("Filaza HUD", Justify.Center).Padding(1, 1));
+                await Task.Delay(5000);
             }
-            catch (Exception ex) { Console.WriteLine("Save Key => " + ex.Message); }
+        }
+
+        static void HandleConnStatus(dynamic data)
+        {
+            if (data.status == "SUCCESS" && data.new_enc_key != null)
+            {
+                oldEncKey = data.new_enc_key;
+                SaveEncKey();
+            }
+            else if (data.status != "SUCCESS")
+            {
+                hud.LastMessage = $"[red]Connection rejected: {data.message}[/]";
+                _ = Shutdown();
+            }
+        }
+
+        static void HandleSiteStatus(dynamic data)
+        {
+            if (data.status == "SUCCESS")
+            {
+                hud.SiteUrl = data.url;
+                OpenBrowser(hud.SiteUrl);
+            }
+        }
+
+        static async Task RequestSite()
+        {
+            await SendAsync(JsonConvert.SerializeObject(new { action = "REQUEST_SITE" }));
+        }
+
+        static async Task SendAsync(string message)
+        {
+            if (ws?.State != WebSocketState.Open) return;
+
+            var buffer = Encoding.UTF8.GetBytes(message);
+            await ws.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
         }
 
         static string GetIP()
         {
             try
             {
-                using (var hc = new HttpClient())
-                {
-                    var ip = hc.GetStringAsync("https://api.ipify.org").Result; //Do not be afraid, if you do not want to reject your ip then replace it with a plug but know that the fact that you transmit your ip reduces the chance of non-binding entry into your account
-                    return ip.Trim();
-                }
+                using var httpClient = new HttpClient();
+                return httpClient.GetStringAsync("https://api.ipify.org").Result.Trim();
             }
-            catch { return "127.0.0.1"; }
+            catch { return "N/A"; }
         }
 
         static string GetPCSpecs()
@@ -211,23 +267,16 @@ namespace DataMaker
             try
             {
                 var sb = new StringBuilder();
-                using (var mc = new ManagementClass("Win32_Processor"))
-                {
-                    foreach (ManagementObject mo in mc.GetInstances())
-                    {
-                        var nm = mo["Name"]?.ToString();
-                        if (!string.IsNullOrEmpty(nm)) { sb.Append("CPU:" + nm.Trim() + "; "); break; }
-                    }
-                }
-                using (var s = new ManagementObjectSearcher("SELECT Capacity FROM Win32_PhysicalMemory"))
+                using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
+                    foreach (var obj in searcher.Get())
+                        sb.Append($"CPU: {obj["Name"]}; ");
+
+                using (var searcher = new ManagementObjectSearcher("SELECT Capacity FROM Win32_PhysicalMemory"))
                 {
                     long total = 0;
-                    foreach (ManagementObject mo in s.Get())
-                    {
-                        var c = mo["Capacity"];
-                        if (c != null) total += Convert.ToInt64(c);
-                    }
-                    if (total > 0) sb.Append("RAM:" + (total / (1024 * 1024 * 1024)) + "GB; ");
+                    foreach (ManagementObject obj in searcher.Get())
+                        total += Convert.ToInt64(obj["Capacity"]);
+                    sb.Append($"RAM: {total / (1024L * 1024 * 1024)}GB; ");
                 }
                 return sb.ToString();
             }
@@ -238,21 +287,55 @@ namespace DataMaker
         {
             try
             {
-                using (var ms = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BaseBoard"))
-                {
-                    foreach (ManagementObject mo in ms.Get())
-                    {
-                        var sn = mo["SerialNumber"]?.ToString();
-                        if (!string.IsNullOrEmpty(sn)) return sn.Trim();
-                    }
-                }
+                using var searcher = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BaseBoard");
+                foreach (ManagementObject obj in searcher.Get())
+                    return obj["SerialNumber"]?.ToString()?.Trim() ?? Guid.NewGuid().ToString();
             }
             catch { }
+
             return Guid.NewGuid().ToString();
+        }
+
+        static void OpenBrowser(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch { }
+        }
+
+        static void LoadEncKey()
+        {
+            try { if (File.Exists(secretCfgPath)) oldEncKey = File.ReadAllText(secretCfgPath); }
+            catch { }
+        }
+
+        static void SaveEncKey()
+        {
+            try { File.WriteAllText(secretCfgPath, oldEncKey); }
+            catch { }
+        }
+
+        static long GetPing(string host)
+        {
+            try
+            {
+                using var ping = new Ping();
+                var reply = ping.Send(host, 1000);
+                return reply?.Status == IPStatus.Success ? reply.RoundtripTime : -1;
+            }
+            catch { return -1; }
+        }
+
+        class HUDState
+        {
+            public bool Connected { get; set; }
+            public string LastIP { get; set; }
+            public string PCSpecs { get; set; }
+            public string LastMessage { get; set; }
+            public string SiteUrl { get; set; }
+            public long PingMs { get; set; }
         }
     }
 }
-
 
 /*
   Code written by:

@@ -4,7 +4,7 @@
 
 A powerful and secure open-source client application designed to interact with the Secure Ephemeral Site Manager. This client connects to a remote server to manage temporary websites with privilege-based access control, ensuring that only authorized users can access and utilize ephemeral sites.
 
-![SpyNet Logo](https://avatars.githubusercontent.com/u/139874469?v=4)
+![SpyNet Logo](https://nesnneky.xyz/datamaker/spnlogo.png)
 
 ## Table of Contents
 
@@ -58,4 +58,4 @@ A powerful and secure open-source client application designed to interact with t
 
   ## Contact
 
- SUPPORT: https://t.me/ne_kenti
+ SUPPORT: https://t.me/RomanShpilka
